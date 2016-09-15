@@ -5,7 +5,7 @@
   "authors": [
     "Philip Diffenderfer <pdiffenderfer@gmail.com>"
   ],
-  "description": "Advanced validation rules for rekord",
+  "description": "An add-on to Rekord to allow mass changes or discards",
   "main": "build/rekord-session.js",
   "keywords": [
     "javascript",
