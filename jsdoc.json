@@ -1,0 +1,29 @@
+{
+  "source": {
+    "include": [
+      "src/lib/"
+    ]
+  },
+  "templates": {
+    "applicationName": "Rekord Session",
+    "linenums": true,
+    "cleverLinks": true,
+    "default": {
+      "outputSourceFiles": true
+    }
+  },
+  "opts": {
+    "destination": "../rekord-session-docs/docs/",
+    "recurse": "true",
+    "template": "./node_modules/jaguarjs-jsdoc",
+    "readme": "./README.md",
+    "pedantic": true,
+    "debug": true
+  },
+  "plugins": [
+    "plugins/markdown"
+  ],
+  "tags": {
+    "allowUnknownTags": true
+  }
+}

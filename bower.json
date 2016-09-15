@@ -1,0 +1,29 @@
+{
+  "name": "rekord-session",
+  "version": "1.4.0",
+  "homepage": "https://github.com/Rekord/rekord-session",
+  "authors": [
+    "Philip Diffenderfer <pdiffenderfer@gmail.com>"
+  ],
+  "description": "Advanced validation rules for rekord",
+  "main": "build/rekord-session.js",
+  "keywords": [
+    "javascript",
+    "orm",
+    "offline",
+    "realtime",
+    "session"
+  ],
+  "license": "MIT",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests",
+    "src"
+  ],
+  "dependencies": {
+    "rekord": "~1.4.0"
+  }
+}
