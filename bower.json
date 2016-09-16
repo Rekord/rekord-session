@@ -5,7 +5,7 @@
   "authors": [
     "Philip Diffenderfer <pdiffenderfer@gmail.com>"
   ],
-  "description": "An add-on to Rekord to allow mass changes or discards",
+  "description": "Adds mass changes & discards to Rekord",
   "main": "build/rekord-session.js",
   "keywords": [
     "javascript",

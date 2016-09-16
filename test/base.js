@@ -487,7 +487,9 @@ TestRest.prototype =
     function onUpdate()
     {
       var existing = map.get( model.$key() );
-      Rekord.transfer( encoded, existing );
+      if ( existing ) {
+        Rekord.transfer( encoded, existing );
+      }
       success.apply( this, arguments );
     }
 
