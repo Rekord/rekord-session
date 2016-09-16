@@ -667,3 +667,7 @@ test( 'complex discard', function(assert)
 // collection removes
 // collection reset
 // collection clear
+// one of the rest calls fails during save (promise must fail with error, calling save again should finish everything)
+// moving an object from one relation to another (must watch two objects)
+// model.remove -> discard -> model.remove -> save
+// model.remove -> discard -> model.save -> discard -> model.remove -> save
