@@ -1,4 +1,4 @@
-/* rekord-session 1.4.0 - Adds mass changes & discards to Rekord by Philip Diffenderfer */
+/* rekord-session 1.4.1 - Adds mass changes & discards to Rekord by Philip Diffenderfer */
 (function(global, Rekord, undefined)
 {
   var Map = Rekord.Map;
@@ -9,8 +9,10 @@
   var ModelCollection = Rekord.ModelCollection;
   var RelationHasOne = Rekord.Relations.hasOne;
   var RelationBelongsTo = Rekord.Relations.belongsTo;
+  var Cascade = Rekord.Cascade;
 
   var isObject = Rekord.isObject;
+  var isNumber = Rekord.isNumber;
   var uuid = Rekord.uuid;
   var equals = Rekord.equals;
   var noop = Rekord.noop;
@@ -18,28 +20,34 @@
   var addMethods = Rekord.addMethods;
   var replaceMethod = Rekord.replaceMethod;
 
+  var keyParser = Rekord.createParser('$key()');
+
 var Listeners = {
 
   RelationUpdate: function(session, watcher, parent, related, property)
   {
-    return function(relator, relation)
+    return function onRelationUpdate(relator, relation)
     {
       if ( session.isDestroyed() )
       {
         return;
       }
 
-      if ( session.isWatching( relation.lastRelated ) && !session.isWatching( session.related ) )
+      if ( relation.lastRelated && session.isWatching( relation.lastRelated ) )
       {
         session.unwatch( relation.lastRelated );
-        session.watch( session.related, watcher.relations[ property ], watcher );
+      }
+
+      if ( relation.related && !session.isWatching( relation.related ) )
+      {
+        session.watch( relation.related, watcher.relations[ property ], watcher );
       }
     };
   },
 
   CollectionAdd: function(session, watcher)
   {
-    return function (collection, added)
+    return function onAdd(collection, added)
     {
       if ( session.isDestroyed() )
       {
@@ -52,7 +60,7 @@ var Listeners = {
 
   CollectionAdds: function(session, watcher)
   {
-    return function (collection, added)
+    return function onAdds(collection, added)
     {
       if ( session.isDestroyed() )
       {
@@ -68,7 +76,7 @@ var Listeners = {
 
   CollectionRemove: function(session, watcher)
   {
-    return function (collection, removed)
+    return function onRemove(collection, removed)
     {
       if ( session.isDestroyed() )
       {
@@ -81,7 +89,7 @@ var Listeners = {
 
   CollectionRemoves: function(session, watcher)
   {
-    return function (collection, removed)
+    return function onRemoves(collection, removed)
     {
       if ( session.isDestroyed() )
       {
@@ -97,14 +105,14 @@ var Listeners = {
 
   CollectionReset: function(session, watcher)
   {
-    return function (collection)
+    return function onReset(collection)
     {
       if ( session.isDestroyed() )
       {
         return;
       }
 
-      watcher.destroyChildren();
+      watcher.moveChildren( session.unwatched );
 
       for (var i = 0; i < collection.length; i++)
       {
@@ -115,14 +123,14 @@ var Listeners = {
 
   CollectionCleared: function(session, watcher)
   {
-    return function (collection)
+    return function onCleared(collection)
     {
       if ( session.isDestroyed() )
       {
         return;
       }
 
-      watcher.destroyChildren();
+      watcher.moveChildren( session.unwatched );
     };
   }
 
@@ -144,9 +152,14 @@ replaceMethod( Model.prototype, '$save', function($save)
 
     if ( fakeIt )
     {
+      var cascade =
+        (arguments.length === 3 ? cascade :
+          (arguments.length === 2 && isObject( setProperties ) && isNumber( setValue ) ? setValue :
+            (arguments.length === 1 && isNumber( setProperties ) ?  setProperties : this.$db.cascade ) ) );
+
       this.$set( setProperties, setValue );
 
-      this.$session.saveModel( this );
+      this.$session.saveModel( this, cascade );
 
       return Promise.resolve( this );
     }
@@ -169,7 +182,7 @@ replaceMethod( Model.prototype, '$remove', function($remove)
 
     if ( fakeIt )
     {
-      this.$session.removeModel( this );
+      this.$session.removeModel( this, cascade );
 
       return Promise.resolve( this );
     }
@@ -185,7 +198,8 @@ function Session()
 {
   this.status = Session.Status.Active;
   this.watching = new Map();
-  this.removing = new Collection();
+  this.removing = new Map();
+  this.unwatched = new Map();
   this.validationRequired = false;
 }
 
@@ -205,33 +219,58 @@ addMethods( Session.prototype,
 
   hasChanges: function(checkSavedOnly)
   {
-    if (this.removing.length > 0)
+    if (this.removing.size() > 0)
     {
       return true;
     }
 
-    return this.searchModels( false, function(model, watcher)
+    var unwatchedChanges = searchModels( this.unwatched, false, function(model, watcher)
     {
       if ( (!checkSavedOnly || watcher.save) && model.$hasChanges() )
       {
         return true;
       }
     });
+
+    if ( unwatchedChanges )
+    {
+      return true;
+    }
+
+    var watchedChanges = searchModels( this.watching, false, function(model, watcher)
+    {
+      if ( (!checkSavedOnly || watcher.save) && model.$hasChanges() )
+      {
+        return true;
+      }
+    });
+
+    return watchedChanges;
   },
 
   getChanged: function(checkSavedOnly, out)
   {
     var target = out || new Collection();
 
-    target.push.apply( target, this.removing );
+    target.push.apply( target, this.removing.values );
 
-    return this.searchModels( target, function(model, watcher)
+    searchModels( this.watching, null, function(model, watcher)
     {
       if ( (!checkSavedOnly || watcher.save) && model.$hasChanges() )
       {
         target.push( model );
       }
     });
+
+    searchModels( this.unwatched, null, function(model, watcher)
+    {
+      if ( (!checkSavedOnly || watcher.save) && model.$hasChanges() )
+      {
+        target.push( model );
+      }
+    });
+
+    return target;
   },
 
   validate: function(stopAtInvalid)
@@ -240,7 +279,7 @@ addMethods( Session.prototype,
 
     if ( Rekord.Validation )
     {
-      this.searchModels( true, function(model, watcher)
+      searchModels( this.watching, true, function(model, watcher)
       {
         if ( model.$validate && !model.$validate() )
         {
@@ -274,16 +313,26 @@ addMethods( Session.prototype,
       return Promise.reject( this );
     }
 
-    return Promise.singularity( Promise.resolve( this ), this, this.handleSave );
+    var sessionPromise = new Promise();
+
+    var savePromise = Promise.singularity( sessionPromise, this, this.handleSave );
+
+    sessionPromise.resolve( this );
+
+    savePromise.success( this.onSaveSuccess, this );
+
+    return savePromise;
   },
 
-  handleSave: function()
+  handleSave: function(singularity)
   {
     this.status = Session.Status.Saving;
 
-    this.searchModels( true, this.executeSave );
+    searchModels( this.watching, true, this.executeSave, this );
 
-    this.removing.each( this.executeRemove, this );
+    searchModels( this.removing, true, this.executeRemove, this );
+
+    searchAny( this.unwatched, true, this.executeUnwatchedSave, this );
 
     this.status = Session.Status.Active;
   },
@@ -298,11 +347,11 @@ addMethods( Session.prototype,
         model.$db.models.remove( model.$key() );
       }
 
-      model.$save().success( this.afterSave( watcher, model) );
+      model.$save( watcher.cascade ).success( this.afterSave( watcher ) );
     }
   },
 
-  executeRemove: function(model)
+  executeRemove: function(model, watcher)
   {
     if ( model.$status === Model.Status.RemovePending )
     {
@@ -310,33 +359,72 @@ addMethods( Session.prototype,
       model.$status = Model.Status.Synced;
       model.$db.models.put( model.$key(), model );
 
-      model.$remove().success( this.afterRemove( this, model ) );
+      model.$remove( watcher.cascade ).success( this.afterRemove( watcher, this ) );
     }
   },
 
-  afterSave: function(watcher, model)
+  executeUnwatchedSave: function(model, watcher)
+  {
+    if ( watcher.save )
+    {
+      if ( !model.$isSaved() )
+      {
+        model.$db.models.remove( model.$key() );
+      }
+
+      model.$save( watcher.cascade ).success( this.afterUnwatchSave( watcher ) );
+    }
+  },
+
+  afterSave: function(watcher)
   {
     return function onSave()
     {
-      model.$push();
+      watcher.saveState( true );
       watcher.save = false;
     };
   },
 
-  afterRemove: function(session, model)
+  afterRemove: function(watcher, session)
   {
     return function onRemove()
     {
-      session.removing.remove( model );
+      session.removing.remove( watcher.key );
+      watcher.destroyReferences();
     };
+  },
+
+  afterUnwatchSave: function(watcher)
+  {
+    return function onSave()
+    {
+      watcher.destroy();
+    };
+  },
+
+  onSaveSuccess: function()
+  {
+    searchAny( this.unwatched, true, this.onSaveSuccessUnwatched, this );
+
+    this.removing.reset();
+    this.unwatched.reset();
+  },
+
+  onSaveSuccessUnwatched: function(model, watcher)
+  {
+    watcher.destroy();
   },
 
   discard: function()
   {
-    this.searchModels( true, this.discardSave );
+    searchModels( this.removing, true, this.discardRemove, this );
 
-    this.removing.each( this.discardRemove );
-    this.removing.clear();
+    searchAny( this.unwatched, true, this.discardUnwatched, this );
+
+    searchModels( this.watching, true, this.discardSave, this );
+
+    this.removing.reset();
+    this.unwatched.reset();
 
     return this;
   },
@@ -345,28 +433,33 @@ addMethods( Session.prototype,
   {
     if ( watcher.save )
     {
+      watcher.save = false;
+
       if ( !model.$isSaved() )
       {
         model.$db.removeFromModels( model );
       }
-      else
-      {
-        model.$pop();
-      }
-
-      watcher.save = false;
     }
+
+    watcher.restoreState();
+
+    model.$updated();
   },
 
-  discardRemove: function(model)
+  discardRemove: function(model, watcher)
   {
     if ( model.$status === Model.Status.RemovePending )
     {
-      model.$pop();
       model.$status = Model.Status.Synced;
       model.$db.models.put( model.$key(), model );
-      model.$updated();
+
+      watcher.reattach();
     }
+  },
+
+  discardUnwatched: function(model, watcher)
+  {
+    watcher.reattach();
   },
 
   disable: function()
@@ -411,29 +504,6 @@ addMethods( Session.prototype,
     return this.status === Session.Status.Destroyed;
   },
 
-  searchModels: function(defaultResult, callback, context)
-  {
-    var callbackContext = context || this;
-    var watches = this.watching.values;
-
-    for (var i = 0; i < watches.length; i++)
-    {
-      var watcher = watches[ i ];
-
-      if ( watcher.object instanceof Model )
-      {
-        var result = callback.call( callbackContext, watcher.object, watcher );
-
-        if ( result !== undefined )
-        {
-          return result;
-        }
-      }
-    }
-
-    return defaultResult;
-  },
-
   destroy: function()
   {
     if ( this.status !== Session.Status.Destroyed )
@@ -446,12 +516,21 @@ addMethods( Session.prototype,
 
         if ( !watcher.parent )
         {
-          watcher.destroy( this );
+          watcher.destroy();
         }
       }
 
+      var removing = this.removing.values;
+
+      for (var i = 0; i < removing.length; i++)
+      {
+        var remover = removing[ i ];
+
+        remover.destroyReferences();
+      }
+
       this.watching.reset();
-      this.removing.clear();
+      this.removing.reset();
 
       this.status = Session.Status.Destroyed;
     }
@@ -472,7 +551,7 @@ addMethods( Session.prototype,
 
       return object.$sessionKey;
     }
-    else
+    else if ( create )
     {
       throw 'The object provided cannot be watched by session.';
     }
@@ -488,6 +567,18 @@ addMethods( Session.prototype,
 
       if ( !watch && create )
       {
+        watch = this.unwatched.get( key );
+
+        this.unwatched.remove( key );
+
+        if ( watch )
+        {
+          this.watching.put( key, watch );
+        }
+      }
+
+      if ( !watch && create )
+      {
         watch = new SessionWatch( key, object );
 
         this.watching.put( key, watch );
@@ -497,11 +588,72 @@ addMethods( Session.prototype,
     }
   },
 
+  getAnyWatch: function(object)
+  {
+    var key = this.getSessionKey( object );
+    var watcher = null;
+
+    if ( key )
+    {
+      watcher = this.watching.get( key );
+
+      if ( !watcher )
+      {
+        watcher = this.unwatched.get( key );
+      }
+    }
+
+    return watcher;
+  },
+
+  getRemoveWatch: function(object)
+  {
+    var key = this.getSessionKey( object );
+
+    if ( key )
+    {
+      return this.removing.get( key );
+    }
+  },
+
   isWatching: function(object)
   {
     var key = this.getSessionKey( object );
 
-    return key !== false && this.watching.has( key );
+    return key && this.watching.has( key );
+  },
+
+  isUnwatched: function(object)
+  {
+    var key = this.getSessionKey( object );
+
+    return key && this.unwatched.has( key );
+  },
+
+  isRemoved: function(object)
+  {
+    var key = this.getSessionKey( object );
+
+    return key && this.removing.has( key );
+  },
+
+  hasWatched: function(object)
+  {
+    var key = this.getSessionKey( object );
+
+    return key && ( this.watching.has( key ) || this.removing.has( key ) || this.unwatched.has( key ) );
+  },
+
+  watchMany: function(models, relations)
+  {
+    var watchers = [];
+
+    for (var i = 0; i < models.length; i++)
+    {
+      watchers.push( this.watch( models[ i ], relations ) );
+    }
+
+    return watchers;
   },
 
   watch: function(model, relations, parent)
@@ -511,8 +663,7 @@ addMethods( Session.prototype,
     watcher.setRelations( relations );
     watcher.setSession( this );
     watcher.setParent( parent );
-
-    model.$push();
+    watcher.saveState();
 
     if ( isObject( relations ) )
     {
@@ -573,52 +724,64 @@ addMethods( Session.prototype,
 
       if ( watcher )
       {
-        watcher.destroy( this );
+        watcher.moveTo( this.unwatched );
       }
     }
   },
 
-  saveModel: function(model)
+  saveModel: function(model, cascade)
   {
-    var watcher = this.getSessionWatch( model );
-
-    if ( watcher && !watcher.save )
-    {
-      var key = model.$key();
-      var db = model.$db;
-
-      if ( db.models.has( key ) )
-      {
-        db.trigger( Database.Events.ModelUpdated, [model] );
-
-        model.$trigger( Model.Events.UpdateAndSave );
-      }
-      else
-      {
-        db.models.put( key, model );
-        db.trigger( Database.Events.ModelAdded, [model] );
-        db.updated();
-
-        model.$trigger( Model.Events.CreateAndSave );
-      }
-
-      watcher.save = true;
-    }
-  },
-
-  removeModel: function(model)
-  {
-    var watcher = this.getSessionWatch( model );
+    var watcher = this.getAnyWatch( model );
 
     if ( watcher )
     {
-      model.$push();
+      watcher.addCascade( cascade );
+
+      if ( !watcher.save )
+      {
+        var key = model.$key();
+        var db = model.$db;
+
+        if ( db.models.has( key ) )
+        {
+          db.trigger( Database.Events.ModelUpdated, [model] );
+
+          model.$trigger( Model.Events.UpdateAndSave );
+        }
+        else
+        {
+          db.models.put( key, model );
+          db.trigger( Database.Events.ModelAdded, [model] );
+          db.updated();
+
+          model.$trigger( Model.Events.CreateAndSave );
+        }
+
+        watcher.save = true;
+      }
+    }
+  },
+
+  removeModel: function(model, cascade)
+  {
+    var watcher = this.getAnyWatch( model );
+
+    if ( watcher )
+    {
+      watcher.addCascade( cascade );
+      watcher.moveTo( this.removing );
+
       model.$status = Model.Status.RemovePending;
       model.$db.removeFromModels( model );
+    }
+    else
+    {
+      var removed = this.getRemoveWatch( model );
 
-      this.removing.add( model );
-
-      watcher.destroy( this );
+      if ( removed )
+      {
+        removed.addCascade( cascade );
+      }
     }
   }
 
@@ -629,11 +792,14 @@ function SessionWatch( key, object )
 {
   this.key = key;
   this.object = object;
+  this.state = null;
   this.relations = false;
   this.parent = false;
   this.children = {};
   this.offs = [];
   this.save = false;
+  this.cascade = undefined;
+  this.state = null;
 }
 
 addMethods( SessionWatch.prototype,
@@ -692,40 +858,225 @@ addMethods( SessionWatch.prototype,
     this.offs.push( off );
   },
 
-  destroy: function(session)
+  addCascade: function(cascade)
+  {
+    if ( isNumber( cascade ) )
+    {
+      if ( this.cascade === undefined )
+      {
+        this.cascade = 0;
+      }
+
+      this.cascade = this.cascade | cascade;
+    }
+  },
+
+  saveState: function(override)
+  {
+    if ( this.state && !override )
+    {
+      return;
+    }
+
+    var model = this.object;
+    var oldState = model.$savedState;
+
+    model.$push();
+
+    var relations = this.relations;
+    var state = model.$savedState;
+
+    if ( isObject( relations ) )
+    {
+      for (var relationName in relations)
+      {
+        var value = model[ relationName ];
+
+        if ( value instanceof Model )
+        {
+          state[ relationName ] = value.$key();
+        }
+        else if ( value instanceof ModelCollection )
+        {
+          state[ relationName ] = value.pluck( keyParser );
+        }
+        else
+        {
+          state[ relationName ] = null;
+        }
+      }
+    }
+
+    this.state = state;
+
+    model.$savedState = oldState;
+  },
+
+  restoreState: function()
+  {
+    var model = this.object;
+    var state = this.state;
+
+    if ( isObject( state ) )
+    {
+      var relations = model.$db.relations;
+      var relationsWatched = this.relations;
+      var relationsSnapshot = {};
+
+      for (var relationName in relationsWatched)
+      {
+        var relation = relations[ relationName ];
+
+        relationsSnapshot[ relationName ] = {
+          clearKey: relation.clearKey,
+          cascadeRemove: relation.cascadeRemove,
+          cascade: relation.cascade
+        };
+
+        relation.clearKey = false;
+        relation.cascadeRemove = Cascade.None;
+        relation.cascade = Cascade.None;
+      }
+
+      model.$set( state, undefined, true, true );
+      model.$decode();
+
+      for (var relationName in relationsWatched)
+      {
+        var relation = relations[ relationName ];
+        var snapshot = relationsSnapshot[ relationName ];
+
+        relation.clearKey = snapshot.clearKey;
+        relation.cascadeRemove = snapshot.cascadeRemove;
+        relation.cascade = snapshot.cascade;
+      }
+    }
+  },
+
+  removeListeners: function()
   {
     var offs = this.offs;
-    var object = this.object;
 
     for (var i = 0; i < offs.length; i++)
     {
       offs[ i ]();
     }
 
-    session.watching.remove( this.key );
-
-    this.destroyChildren( session );
-
-    object.$session = null;
-
-    this.parent = null;
-    this.offs.length = 0;
-    this.save = false;
+    offs.length = 0;
   },
 
-  destroyChildren: function(session)
+  moveTo: function(target)
+  {
+    var session = this.object.$session;
+
+    this.removeListeners();
+    this.moveChildren( target );
+
+    if ( this.parent )
+    {
+      delete this.parent.children[ this.key ];
+    }
+
+    session.watching.remove( this.key );
+    session.unwatched.remove( this.key );
+    session.removing.remove( this.key );
+
+    target.put( this.key, this );
+  },
+
+  reattach: function()
+  {
+    var session = this.object.$session;
+
+    session.removing.remove( this.key );
+    session.unwatched.remove( this.key );
+    session.watching.put( this.key, this );
+
+    session.watch( this.object, this.relations, this.parent );
+  },
+
+  destroy: function()
+  {
+    var children = this.children;
+
+    this.children = {};
+    this.removeListeners();
+    this.destroyReferences();
+
+    for (var childKey in children)
+    {
+      children[ childKey ].destroy();
+    }
+  },
+
+  destroyReferences: function()
+  {
+    var session = this.object.$session;
+
+    session.watching.remove( this.key );
+    session.removing.remove( this.key );
+    session.unwatched.remove( this.key );
+
+    this.object.$session = null;
+    this.state = null;
+
+    this.parent = null;
+    this.save = false;
+    this.cascade = undefined;
+  },
+
+  moveChildren: function(target)
   {
     var children = this.children;
 
     for (var childKey in children)
     {
-      children[ childKey ].destroy( session );
+      children[ childKey ].moveTo( target );
     }
-
-    this.children = {};
   }
 
 });
+
+
+function searchAny(map, defaultResult, callback, context)
+{
+  var watchers = map.values;
+
+  for (var i = watchers.length - 1; i >= 0; i--)
+  {
+    var watcher = watchers[ i ];
+    var result = callback.call( context, watcher.object, watcher );
+
+    if ( result !== undefined )
+    {
+      return result;
+    }
+  }
+
+  return defaultResult;
+}
+
+function searchModels(map, defaultResult, callback, context)
+{
+  var watchers = map.values;
+
+  for (var i = watchers.length - 1; i >= 0; i--)
+  {
+    var watcher = watchers[ i ];
+
+    if ( watcher.object instanceof Model )
+    {
+      var result = callback.call( context, watcher.object, watcher );
+
+      if ( result !== undefined )
+      {
+        return result;
+      }
+    }
+  }
+
+  return defaultResult;
+}
 
 
   Rekord.Session = Session;

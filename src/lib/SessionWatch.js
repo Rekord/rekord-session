@@ -3,11 +3,14 @@ function SessionWatch( key, object )
 {
   this.key = key;
   this.object = object;
+  this.state = null;
   this.relations = false;
   this.parent = false;
   this.children = {};
   this.offs = [];
   this.save = false;
+  this.cascade = undefined;
+  this.state = null;
 }
 
 addMethods( SessionWatch.prototype,
@@ -66,37 +69,181 @@ addMethods( SessionWatch.prototype,
     this.offs.push( off );
   },
 
-  destroy: function(session)
+  addCascade: function(cascade)
+  {
+    if ( isNumber( cascade ) )
+    {
+      if ( this.cascade === undefined )
+      {
+        this.cascade = 0;
+      }
+
+      this.cascade = this.cascade | cascade;
+    }
+  },
+
+  saveState: function(override)
+  {
+    if ( this.state && !override )
+    {
+      return;
+    }
+
+    var model = this.object;
+    var oldState = model.$savedState;
+
+    model.$push();
+
+    var relations = this.relations;
+    var state = model.$savedState;
+
+    if ( isObject( relations ) )
+    {
+      for (var relationName in relations)
+      {
+        var value = model[ relationName ];
+
+        if ( value instanceof Model )
+        {
+          state[ relationName ] = value.$key();
+        }
+        else if ( value instanceof ModelCollection )
+        {
+          state[ relationName ] = value.pluck( keyParser );
+        }
+        else
+        {
+          state[ relationName ] = null;
+        }
+      }
+    }
+
+    this.state = state;
+
+    model.$savedState = oldState;
+  },
+
+  restoreState: function()
+  {
+    var model = this.object;
+    var state = this.state;
+
+    if ( isObject( state ) )
+    {
+      var relations = model.$db.relations;
+      var relationsWatched = this.relations;
+      var relationsSnapshot = {};
+
+      for (var relationName in relationsWatched)
+      {
+        var relation = relations[ relationName ];
+
+        relationsSnapshot[ relationName ] = {
+          clearKey: relation.clearKey,
+          cascadeRemove: relation.cascadeRemove,
+          cascade: relation.cascade
+        };
+
+        relation.clearKey = false;
+        relation.cascadeRemove = Cascade.None;
+        relation.cascade = Cascade.None;
+      }
+
+      model.$set( state, undefined, true, true );
+      model.$decode();
+
+      for (var relationName in relationsWatched)
+      {
+        var relation = relations[ relationName ];
+        var snapshot = relationsSnapshot[ relationName ];
+
+        relation.clearKey = snapshot.clearKey;
+        relation.cascadeRemove = snapshot.cascadeRemove;
+        relation.cascade = snapshot.cascade;
+      }
+    }
+  },
+
+  removeListeners: function()
   {
     var offs = this.offs;
-    var object = this.object;
 
     for (var i = 0; i < offs.length; i++)
     {
       offs[ i ]();
     }
 
-    session.watching.remove( this.key );
-
-    this.destroyChildren( session );
-
-    object.$session = null;
-
-    this.parent = null;
-    this.offs.length = 0;
-    this.save = false;
+    offs.length = 0;
   },
 
-  destroyChildren: function(session)
+  moveTo: function(target)
+  {
+    var session = this.object.$session;
+
+    this.removeListeners();
+    this.moveChildren( target );
+
+    if ( this.parent )
+    {
+      delete this.parent.children[ this.key ];
+    }
+
+    session.watching.remove( this.key );
+    session.unwatched.remove( this.key );
+    session.removing.remove( this.key );
+
+    target.put( this.key, this );
+  },
+
+  reattach: function()
+  {
+    var session = this.object.$session;
+
+    session.removing.remove( this.key );
+    session.unwatched.remove( this.key );
+    session.watching.put( this.key, this );
+
+    session.watch( this.object, this.relations, this.parent );
+  },
+
+  destroy: function()
+  {
+    var children = this.children;
+
+    this.children = {};
+    this.removeListeners();
+    this.destroyReferences();
+
+    for (var childKey in children)
+    {
+      children[ childKey ].destroy();
+    }
+  },
+
+  destroyReferences: function()
+  {
+    var session = this.object.$session;
+
+    session.watching.remove( this.key );
+    session.removing.remove( this.key );
+    session.unwatched.remove( this.key );
+
+    this.object.$session = null;
+    this.state = null;
+
+    this.parent = null;
+    this.save = false;
+    this.cascade = undefined;
+  },
+
+  moveChildren: function(target)
   {
     var children = this.children;
 
     for (var childKey in children)
     {
-      children[ childKey ].destroy( session );
+      children[ childKey ].moveTo( target );
     }
-
-    this.children = {};
   }
 
 });

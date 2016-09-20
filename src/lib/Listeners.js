@@ -2,24 +2,28 @@ var Listeners = {
 
   RelationUpdate: function(session, watcher, parent, related, property)
   {
-    return function(relator, relation)
+    return function onRelationUpdate(relator, relation)
     {
       if ( session.isDestroyed() )
       {
         return;
       }
 
-      if ( session.isWatching( relation.lastRelated ) && !session.isWatching( session.related ) )
+      if ( relation.lastRelated && session.isWatching( relation.lastRelated ) )
       {
         session.unwatch( relation.lastRelated );
-        session.watch( session.related, watcher.relations[ property ], watcher );
+      }
+
+      if ( relation.related && !session.isWatching( relation.related ) )
+      {
+        session.watch( relation.related, watcher.relations[ property ], watcher );
       }
     };
   },
 
   CollectionAdd: function(session, watcher)
   {
-    return function (collection, added)
+    return function onAdd(collection, added)
     {
       if ( session.isDestroyed() )
       {
@@ -32,7 +36,7 @@ var Listeners = {
 
   CollectionAdds: function(session, watcher)
   {
-    return function (collection, added)
+    return function onAdds(collection, added)
     {
       if ( session.isDestroyed() )
       {
@@ -48,7 +52,7 @@ var Listeners = {
 
   CollectionRemove: function(session, watcher)
   {
-    return function (collection, removed)
+    return function onRemove(collection, removed)
     {
       if ( session.isDestroyed() )
       {
@@ -61,7 +65,7 @@ var Listeners = {
 
   CollectionRemoves: function(session, watcher)
   {
-    return function (collection, removed)
+    return function onRemoves(collection, removed)
     {
       if ( session.isDestroyed() )
       {
@@ -77,14 +81,14 @@ var Listeners = {
 
   CollectionReset: function(session, watcher)
   {
-    return function (collection)
+    return function onReset(collection)
     {
       if ( session.isDestroyed() )
       {
         return;
       }
 
-      watcher.destroyChildren();
+      watcher.moveChildren( session.unwatched );
 
       for (var i = 0; i < collection.length; i++)
       {
@@ -95,14 +99,14 @@ var Listeners = {
 
   CollectionCleared: function(session, watcher)
   {
-    return function (collection)
+    return function onCleared(collection)
     {
       if ( session.isDestroyed() )
       {
         return;
       }
 
-      watcher.destroyChildren();
+      watcher.moveChildren( session.unwatched );
     };
   }
 

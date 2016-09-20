@@ -8,6 +8,77 @@ QUnit.config.reorder = false;
 
 // Extra Assertions
 
+function assertRemoved(model)
+{
+  ok( model.$isDeleted(), model.$uid() + ' is deleted' );
+  notOk( model.$exists(), model.$uid() + ' does not exist' );
+  notOk( model.$db.models.has( model.$key() ), model.$uid() + ' is not in the database' );
+  notOk( model.$db.store.map.has( model.$key() ), model.$uid() + ' is not in the store' );
+  notOk( model.$db.rest.map.has( model.$key() ), model.$uid() + ' is not in the rest' );
+}
+
+function assertRemovedLocally(model)
+{
+  ok( model.$isDeleted(), model.$uid() + ' is deleted' );
+  notOk( model.$exists(), model.$uid() + ' does not exist' );
+  notOk( model.$db.models.has( model.$key() ), model.$uid() + ' is not in the database' );
+  notOk( model.$db.store.map.has( model.$key() ), model.$uid() + ' is not in the store' );
+  ok( model.$db.rest.map.has( model.$key() ), model.$uid() + ' is in the rest' );
+}
+
+function assertSaved(model, record)
+{
+  ok( model.$isSaved(), model.$uid() + ' is saved remotely' );
+  ok( model.$isSavedLocally(), model.$uid() + ' is saved locally' );
+  ok( model.$exists(), model.$uid() + ' exists' );
+  ok( model.$db.models.has( model.$key() ), model.$uid() + ' is in the database' );
+  notOk( model.$isDeleted(), model.$uid() + ' is not removed' );
+  ok( model.$db.store.map.has( model.$key() ), model.$uid() + ' is in the store' );
+  ok( model.$db.rest.map.has( model.$key() ), model.$uid() + ' is in the rest' );
+}
+
+function assertSavedLocally(model)
+{
+  notOk( model.$isSaved(), model.$uid() + ' is not saved remotely' );
+  ok( model.$isSavedLocally(), model.$uid() + ' is saved locally' );
+  ok( model.$exists(), model.$uid() + ' exists' );
+  ok( model.$db.models.has( model.$key() ), model.$uid() + ' is in the database' );
+  notOk( model.$isDeleted(), model.$uid() + ' is not removed' );
+  ok( model.$db.store.map.has( model.$key() ), model.$uid() + ' is in the store' );
+  notOk( model.$db.rest.map.has( model.$key() ), model.$uid() + ' is not in the rest' );
+}
+
+function assertNew(model)
+{
+  notOk( model.$isSaved(), model.$uid() + ' is not saved remotely' );
+  notOk( model.$isSavedLocally(), model.$uid() + ' is not saved locally' );
+  notOk( model.$exists(), model.$uid() + ' does not exist' );
+  notOk( model.$db.models.has( model.$key() ), model.$uid() + ' is not in the database' );
+  notOk( model.$isDeleted(), model.$uid() + ' is not removed' );
+  notOk( model.$db.store.map.has( model.$key() ), model.$uid() + ' is not in the store' );
+  notOk( model.$db.rest.map.has( model.$key() ), model.$uid() + ' is not in the rest' );
+}
+
+function assertStored(model, data)
+{
+  var stored = model.$db.store.map.get( model.$key() );
+
+  for (var prop in data)
+  {
+    deepEqual( data[ prop ], stored[ prop ], model.$uid() + ' ' + prop + ' stored' );
+  }
+}
+
+function assertRest(model, data)
+{
+  var saved = model.$db.rest.map.get( model.$key() );
+
+  for (var prop in data)
+  {
+    deepEqual( data[ prop ], saved[ prop ], model.$uid() + ' ' + prop + ' saved' );
+  }
+}
+
 function isInstance(model, Class, message)
 {
   ok( model instanceof Class, message );
@@ -420,7 +491,6 @@ TestRest.prototype =
       wait( rest.delay, function()
       {
         rest.finish( success, failure, returnValue );
-
       });
     }
     else

@@ -14,9 +14,14 @@ replaceMethod( Model.prototype, '$save', function($save)
 
     if ( fakeIt )
     {
+      var cascade =
+        (arguments.length === 3 ? cascade :
+          (arguments.length === 2 && isObject( setProperties ) && isNumber( setValue ) ? setValue :
+            (arguments.length === 1 && isNumber( setProperties ) ?  setProperties : this.$db.cascade ) ) );
+
       this.$set( setProperties, setValue );
 
-      this.$session.saveModel( this );
+      this.$session.saveModel( this, cascade );
 
       return Promise.resolve( this );
     }
@@ -39,7 +44,7 @@ replaceMethod( Model.prototype, '$remove', function($remove)
 
     if ( fakeIt )
     {
-      this.$session.removeModel( this );
+      this.$session.removeModel( this, cascade );
 
       return Promise.resolve( this );
     }

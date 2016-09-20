@@ -8,11 +8,15 @@
   var ModelCollection = Rekord.ModelCollection;
   var RelationHasOne = Rekord.Relations.hasOne;
   var RelationBelongsTo = Rekord.Relations.belongsTo;
+  var Cascade = Rekord.Cascade;
 
   var isObject = Rekord.isObject;
+  var isNumber = Rekord.isNumber;
   var uuid = Rekord.uuid;
   var equals = Rekord.equals;
   var noop = Rekord.noop;
 
   var addMethods = Rekord.addMethods;
   var replaceMethod = Rekord.replaceMethod;
+
+  var keyParser = Rekord.createParser('$key()');

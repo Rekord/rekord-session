@@ -579,7 +579,11 @@ test( 'complex discard', function(assert)
     }
   });
 
+  ok( sess.isWatching( c0 ) );
+
   c0.$remove();
+
+  notOk( sess.isWatching( c0 ) );
 
   strictEqual( ps.rules[0].group.conditions.length, 0 );
 
@@ -589,6 +593,7 @@ test( 'complex discard', function(assert)
     group_id: ps.rules[0].group.id
   })
 
+  ok( sess.isWatching( c4 ) );
   notOk( c4.$saved );
   ok( c4, 'condition 3' );
   strictEqual( ps.rules[0].group.conditions.length, 1 );
@@ -605,6 +610,7 @@ test( 'complex discard', function(assert)
   notOk( c4.$isSaved() );
   notOk( c4.$saved );
   notOk( sess.hasChanges() );
+  notOk( sess.isWatching( c4 ) );
   strictEqual( Condition.Database.rest.lastModel, null );
   notStrictEqual( g0.$saved.name, 'group 1 a' );
   strictEqual( g0.name, 'group 1');
@@ -656,18 +662,976 @@ test( 'complex discard', function(assert)
   deepEqual( result, expected )
 });
 
-// TODO tests
+test( 'relation update belongsTo', function(assert)
+{
+  var prefix = 'relation_update_belongsTo_';
 
-// relation update (hasOne & belongsTo)
-// unrelate
-// relate
-// collection add
-// collection adds
-// collection remove
-// collection removes
-// collection reset
-// collection clear
+  var TaskList = Rekord({
+    name: prefix + 'list',
+    fields: ['name']
+  });
+
+  var Task = Rekord({
+    name: prefix + 'task',
+    fields: ['list_id', 'name', 'done'],
+    belongsTo: {
+      list: {
+        model: TaskList,
+        local: 'list_id'
+      }
+    }
+  });
+
+  var l0 = TaskList.boot({id: 1, name: 'l0'});
+  var l1 = TaskList.boot({id: 2, name: 'l0'});
+  var t0 = Task.boot({id: 3, list_id: 1, name: 't0', done: false});
+
+  var sess = new Session();
+
+  sess.watch( t0, { list: true } );
+
+  ok( sess.isWatching( l0 ) );
+  notOk( sess.isWatching( l1 ) );
+  ok( l0.$isSaved() );
+  ok( l1.$isSaved() );
+
+  t0.$save( 'list', l1 );
+
+  strictEqual( t0.list, l1 );
+  strictEqual( t0.list_id, l1.id );
+  notOk( sess.isWatching( l0 ) );
+  ok( sess.isWatching( l1 ) );
+
+  sess.save();
+
+  ok( l0.$isSaved() );
+  ok( l1.$isSaved() );
+  strictEqual( t0.list, l1 );
+  strictEqual( t0.list_id, l1.id );
+  notOk( sess.isWatching( l0 ) );
+  ok( sess.isWatching( l1 ) );
+});
+
+
+test( 'relation update belongsTo discard', function(assert)
+{
+  var prefix = 'relation_update_belongsTo_discard_';
+
+  var TaskList = Rekord({
+    name: prefix + 'list',
+    fields: ['name']
+  });
+
+  var Task = Rekord({
+    name: prefix + 'task',
+    fields: ['list_id', 'name', 'done'],
+    belongsTo: {
+      list: {
+        model: TaskList,
+        local: 'list_id'
+      }
+    }
+  });
+
+  var l0 = TaskList.boot({id: 1, name: 'l0'});
+  var l1 = TaskList.boot({id: 2, name: 'l0'});
+  var t0 = Task.boot({id: 3, list_id: 1, name: 't0', done: false});
+
+  var sess = new Session();
+
+  sess.watch( t0, { list: true } );
+
+  ok( sess.isWatching( l0 ) );
+  notOk( sess.isWatching( l1 ) );
+  ok( l0.$isSaved() );
+  ok( l1.$isSaved() );
+
+  t0.$save( 'list', l1 );
+
+  strictEqual( t0.list, l1 );
+  strictEqual( t0.list_id, l1.id );
+  notOk( sess.isWatching( l0 ) );
+  ok( sess.isWatching( l1 ) );
+
+  sess.discard();
+
+  ok( l0.$isSaved() );
+  ok( l1.$isSaved() );
+  strictEqual( t0.list, l0 );
+  strictEqual( t0.list_id, l0.id );
+  ok( sess.isWatching( l0 ) );
+  notOk( sess.isWatching( l1 ) );
+});
+
+
+test( 'relation update hasOne', function(assert)
+{
+  var prefix = 'relation_update_hasOne_';
+
+  var Permission = Rekord({
+    name: prefix + 'permission',
+    fields: ['rights']
+  });
+
+  var Task = Rekord({
+    name: prefix + 'task',
+    fields: ['name', 'done', 'permission_id'],
+    hasOne: {
+      permission: {
+        model: Permission,
+        local: 'permission_id'
+      }
+    }
+  });
+
+  var p0 = Permission.boot({id: 1, rights: 'all'});
+  var p1 = Permission.boot({id: 2, rights: 'none'});
+  var t0 = Task.boot({id: 3, permission_id: 1, name: 't0', done: false});
+
+  var sess = new Session();
+
+  sess.watch( t0, { permission: true } );
+
+  ok( sess.isWatching( p0 ) );
+  notOk( sess.isWatching( p1 ) );
+  ok( p0.$isSaved() );
+  ok( p1.$isSaved() );
+
+  t0.$save( 'permission', p1 );
+
+  strictEqual( t0.permission, p1 );
+  strictEqual( t0.permission_id, p1.id );
+  notOk( sess.isWatching( p0 ) );
+  ok( sess.isWatching( p1 ) );
+
+  sess.save();
+
+  notOk( p0.$isSaved(), 'permission removed when hasOne' );
+  ok( p1.$isSaved() );
+  strictEqual( t0.permission, p1 );
+  strictEqual( t0.permission_id, p1.id );
+  notOk( sess.isWatching( p0 ) );
+  ok( sess.isWatching( p1 ) );
+});
+
+
+test( 'relation update belongsTo discard', function(assert)
+{
+  var prefix = 'relation_update_hasOne_discard_';
+
+  var Permission = Rekord({
+    name: prefix + 'permission',
+    fields: ['rights']
+  });
+
+  var Task = Rekord({
+    name: prefix + 'task',
+    fields: ['name', 'done', 'permission_id'],
+    hasOne: {
+      permission: {
+        model: Permission,
+        local: 'permission_id'
+      }
+    }
+  });
+
+  var p0 = Permission.boot({id: 1, rights: 'all'});
+  var p1 = Permission.boot({id: 2, rights: 'none'});
+  var t0 = Task.boot({id: 3, permission_id: 1, name: 't0', done: false});
+
+  var sess = new Session();
+
+  sess.watch( t0, { permission: true } );
+
+  ok( sess.isWatching( p0 ) );
+  notOk( sess.isWatching( p1 ) );
+  ok( p0.$isSaved() );
+  ok( p1.$isSaved() );
+
+  t0.$save( 'permission', p1 );
+
+  strictEqual( t0.permission, p1 );
+  strictEqual( t0.permission_id, p1.id );
+  notOk( sess.isWatching( p0 ) );
+  ok( sess.isWatching( p1 ) );
+
+  sess.discard();
+
+  ok( p0.$isSaved() );
+  ok( p1.$isSaved() );
+  strictEqual( t0.permission, p0 );
+  strictEqual( t0.permission_id, p0.id );
+  ok( sess.isWatching( p0 ) );
+  notOk( sess.isWatching( p1 ) );
+});
+
+test( 'cascade save', function()
+{
+  var prefix = 'cascade_save_';
+  var TaskName = prefix + 'task';
+
+  var _t0 = {id: 1, name: 't0', done: 1};
+  var _t1 = {id: 2, name: 't1', done: 0};
+
+  var Task_rest = Rekord.rest[ TaskName ] = new TestRest();
+  Task_rest.map.put( _t0.id, _t0 );
+  Task_rest.map.put( _t1.id, _t1 );
+
+  var Task = Rekord({
+    name: TaskName,
+    fields: ['name', 'done']
+  });
+
+  var t0 = Task.get(1);
+  var t1 = Task.get(2);
+  var t2 = new Task({id: 3, name: 't2', done: 1});
+
+  var sess = new Session();
+
+  sess.watchMany( [t0, t1, t2] );
+
+  Task.Database.store.lastKey = null;
+  Task.Database.rest.lastModel = null;
+
+  assertSaved( t0 );
+  assertSaved( t1 );
+  assertNew( t2 );
+
+  t0.name = 't0a';
+
+  t0.$save( Rekord.Cascade.Local );
+  t1.$remove( Rekord.Cascade.Local );
+  t2.$save( Rekord.Cascade.Local );
+
+  strictEqual( Task.Database.store.lastKey, null );
+  strictEqual( Task.Database.rest.lastModel, null );
+
+  strictEqual( sess.getSessionWatch( t0 ).cascade,  Rekord.Cascade.Local );
+  strictEqual( sess.getRemoveWatch( t1 ).cascade,  Rekord.Cascade.Local );
+  strictEqual( sess.getSessionWatch( t2 ).cascade,  Rekord.Cascade.Local );
+
+  ok( t0.$isSaved() );
+  ok( t0.$isSavedLocally() );
+  ok( t1.$isDeleted() );
+  notOk( t2.$isSaved() );
+  notOk( t2.$isSavedLocally() );
+
+  sess.save();
+
+  assertSaved( t0 );
+  assertStored( t0, {name: 't0a'} );
+  assertRest( t0, {name: 't0'} );
+  assertRemovedLocally( t1 );
+  assertSavedLocally( t2 );
+  assertStored( t2, {name: 't2'} );
+});
+
+test( 'cascade discard', function()
+{
+  var prefix = 'cascade_discard_';
+  var TaskName = prefix + 'task';
+
+  var _t0 = {id: 1, name: 't0', done: 1};
+  var _t1 = {id: 2, name: 't1', done: 0};
+
+  var Task_rest = Rekord.rest[ TaskName ] = new TestRest();
+  Task_rest.map.put( _t0.id, _t0 );
+  Task_rest.map.put( _t1.id, _t1 );
+
+  var Task = Rekord({
+    name: prefix + 'task',
+    fields: ['name', 'done']
+  });
+
+  var t0 = Task.get(1);
+  var t1 = Task.get(2);
+  var t2 = new Task({id: 3, name: 't2', done: 1});
+
+  var sess = new Session();
+
+  sess.watchMany( [t0, t1, t2] );
+
+  Task.Database.store.lastKey = null;
+  Task.Database.rest.lastModel = null;
+
+  assertSaved( t0 );
+  assertSaved( t1 );
+  assertNew( t2 );
+
+  t0.name = 't0a';
+
+  t0.$save( Rekord.Cascade.Local );
+  t1.$remove( Rekord.Cascade.Local );
+  t2.$save( Rekord.Cascade.Local );
+
+  strictEqual( Task.Database.store.lastKey, null );
+  strictEqual( Task.Database.rest.lastModel, null );
+
+  strictEqual( sess.getSessionWatch( t0 ).cascade,  Rekord.Cascade.Local );
+  strictEqual( sess.getRemoveWatch( t1 ).cascade,  Rekord.Cascade.Local );
+  strictEqual( sess.getSessionWatch( t2 ).cascade,  Rekord.Cascade.Local );
+
+  ok( t0.$isSaved() );
+  ok( t0.$isSavedLocally() );
+  ok( t1.$isDeleted() );
+  notOk( t2.$isSaved() );
+  notOk( t2.$isSavedLocally() );
+
+  sess.discard();
+
+  assertSaved( t0 );
+  assertSaved( t1 );
+  assertNew( t2 );
+});
+
+test( 'tree', function()
+{
+  var prefix = 'tree_';
+  var TaskName = prefix + 'task';
+
+  var Task = Rekord({
+    name: TaskName,
+    fields: ['name', 'done', 'parent_id'],
+    hasMany: {
+      children: {
+        model: TaskName,
+        foreign: 'parent_id'
+      }
+    }
+  });
+
+  var t0 = Task.boot({
+    id: 1,
+    name: 't0',
+    done: false,
+    children: [
+      {
+        id: 2,
+        name: 't1',
+        done: true
+      },
+      {
+        id: 3,
+        name: 't2',
+        done: true,
+        children: [
+          {
+            id: 4,
+            name: 't3',
+            done: false
+          }
+        ]
+      }
+    ]
+  });
+
+  var t1 = Task.get(2);
+  var t2 = Task.get(3);
+  var t3 = Task.get(4);
+
+  var sess = new Session();
+
+  var relations = {};
+  relations.children = relations;
+
+  sess.watch( t0, relations );
+
+  ok( sess.isWatching( t0 ) );
+  ok( sess.isWatching( t1 ) );
+  ok( sess.isWatching( t2 ) );
+  ok( sess.isWatching( t3 ) );
+
+  t2.$remove();
+
+  ok( sess.isWatching( t0 ) );
+  ok( sess.isWatching( t1 ) );
+  notOk( sess.isWatching( t2 ) );
+  notOk( sess.isWatching( t3 ) );
+
+  sess.discard();
+
+  ok( sess.isWatching( t0 ) );
+  ok( sess.isWatching( t1 ) );
+  ok( sess.isWatching( t2 ) );
+  ok( sess.isWatching( t3 ) );
+});
+
+test( 'delayed remove', function(assert)
+{
+  var prefix = 'delayed_remove_';
+
+  var Task = Rekord({
+    name: prefix + 'task',
+    fields: ['name', 'done']
+  });
+
+  var t0 = Task.boot({id: 1, name: 't0', done: false});
+
+  var sess = new Session();
+
+  sess.watch( t0 );
+
+  ok( sess.isWatching( t0 ) );
+  notOk( sess.isRemoved( t0 ) );
+  notOk( t0.$isDeleted() );
+
+  t0.$remove();
+
+  notOk( sess.isWatching( t0 ) );
+  ok( sess.isRemoved( t0 ) );
+  ok( t0.$isDeleted() );
+
+  sess.discard();
+
+  ok( sess.isWatching( t0 ) );
+  notOk( sess.isRemoved( t0 ) );
+  notOk( t0.$isDeleted() );
+
+  t0.$remove();
+
+  notOk( sess.isWatching( t0 ) );
+  ok( sess.isRemoved( t0 ) );
+  ok( t0.$isDeleted() );
+
+  sess.save();
+
+  notOk( sess.isWatching( t0 ) );
+  notOk( sess.isRemoved( t0 ) ); // it's removed for good
+
+  assertRemoved( t0 );
+});
+
+test( 'remove save remove', function(assert)
+{
+  var prefix = 'remove_save_remove_';
+
+  var Task = Rekord({
+    name: prefix + 'task',
+    fields: ['name', 'done']
+  });
+
+  var t0 = Task.boot({id: 1, name: 't0', done: false});
+
+  var sess = new Session();
+
+  sess.watch( t0 );
+
+  ok( sess.isWatching( t0 ) );
+  notOk( sess.isRemoved( t0 ) );
+  notOk( t0.$isDeleted() );
+
+  t0.$remove();
+
+  notOk( sess.isWatching( t0 ) );
+  ok( sess.isRemoved( t0 ) );
+  ok( t0.$isDeleted() );
+
+  sess.discard();
+
+  ok( sess.isWatching( t0 ) );
+  notOk( sess.isRemoved( t0 ) );
+  notOk( t0.$isDeleted() );
+
+  t0.name = 't0a';
+  t0.$save();
+
+  ok( sess.isWatching( t0 ) );
+  ok( sess.getSessionWatch( t0 ).save );
+  notOk( sess.isRemoved( t0 ) );
+  notOk( t0.$isDeleted() );
+
+  sess.discard();
+
+  ok( sess.isWatching( t0 ) );
+  notOk( sess.getSessionWatch( t0 ).save );
+  notOk( sess.isRemoved( t0 ) );
+  notOk( t0.$isDeleted() );
+
+  strictEqual( t0.name, 't0' );
+
+  t0.$remove();
+
+  notOk( sess.isWatching( t0 ) );
+  ok( sess.isRemoved( t0 ) );
+  ok( t0.$isDeleted() );
+
+  sess.save();
+
+  notOk( sess.isWatching( t0 ) );
+  notOk( sess.isRemoved( t0 ) ); // it's removed for good
+
+  assertRemoved( t0 );
+});
+
+test( 'relation move', function(assert)
+{
+  var prefix = 'relation_remove_';
+  var TaskName = prefix + 'task';
+
+  var Task = Rekord({
+    name: TaskName,
+    fields: ['name', 'done', 'parent_id'],
+    hasMany: {
+      children: {
+        model: TaskName,
+        foreign: 'parent_id',
+        cascadeRemove: Rekord.Cascade.None
+      }
+    }
+  });
+
+  var t0 = Task.boot({id: 1, name: 't0', done: false});
+  var t1 = Task.boot({id: 2, name: 't1', done: true});
+  var t2 = Task.boot({id: 3, name: 't2', done: false, children:[t1]});
+
+  strictEqual( t1.parent_id, t2.id );
+
+  var sess = new Session();
+
+  var relations = {};
+  relations.children = relations;
+
+  sess.watch( t0, relations );
+  sess.watch( t2, relations );
+
+  strictEqual( t1.parent_id, t2.id );
+  strictEqual( t0.children[0], undefined );
+  strictEqual( t2.children[0], t1 );
+
+  ok( sess.isWatching( t0 ) );
+  ok( sess.isWatching( t1 ) );
+  ok( sess.isWatching( t2 ) );
+
+  t2.children.unrelate( t1 );
+
+  strictEqual( t1.parent_id, null );
+  strictEqual( t0.children[0], undefined );
+  strictEqual( t2.children[0], undefined );
+
+  ok( sess.isWatching( t0 ) );
+  notOk( sess.isWatching( t1 ) );
+  ok( sess.isWatching( t2 ) );
+
+  t0.children.relate( t1 );
+
+  strictEqual( t1.parent_id, t0.id );
+  strictEqual( t0.children[0], t1 );
+  strictEqual( t2.children[0], undefined );
+
+  ok( sess.isWatching( t0 ) );
+  ok( sess.isWatching( t1 ) );
+  ok( sess.isWatching( t2 ) );
+
+  sess.discard();
+
+  strictEqual( t1.parent_id, t2.id );
+  strictEqual( t0.children[0], undefined );
+  strictEqual( t2.children[0], t1 );
+});
+
+test( 'unrelate no cascade', function(assert)
+{
+  var prefix = 'unrelate_no_cascade_';
+
+  var Task = Rekord({
+    name: prefix + 'task',
+    fields: ['name', 'done', 'list_id']
+  });
+
+  var TaskList = Rekord({
+    name: prefix + 'list',
+    fields: ['name'],
+    hasMany: {
+      tasks: {
+        model: Task,
+        foreign: 'list_id',
+        comparator: 'id',
+        cascadeRemove: Rekord.Cascade.None
+      }
+    }
+  });
+
+  var l0 = TaskList.boot({id: 1, name: 'l0'});
+  var t0 = Task.boot({id: 2, list_id: 1, name: 't0', done: false});
+  var t1 = Task.boot({id: 3, list_id: 1, name: 't1', done: true});
+
+  var sess = new Session();
+
+  sess.watch( l0, { tasks: true } );
+
+  ok( sess.isWatching( l0 ) );
+  ok( sess.isWatching( t0 ) );
+  ok( sess.isWatching( t1 ) );
+
+  l0.tasks.unrelate( t0 );
+
+  ok( sess.isUnwatched( t0 ) );
+  ok( sess.hasChanges() );
+
+  strictEqual( t0.list_id, null );
+  deepEqual( l0.tasks.toArray(), [t1], 'tasks updated' );
+
+  sess.discard();
+
+  notOk( sess.hasChanges(), 'no changes as expected' );
+  strictEqual( t0.list_id, l0.id, 'fk restored' );
+  deepEqual( l0.tasks.toArray(), [t0, t1], 'tasks restored' );
+
+  l0.tasks.unrelate( t0 );
+
+  strictEqual( t0.list_id, null );
+  deepEqual( l0.tasks.toArray(), [t1], 'tasks updated' );
+
+  sess.save();
+
+  strictEqual( t0.list_id, null );
+  deepEqual( l0.tasks.toArray(), [t1], 'tasks updated' );
+});
+
+test( 'unrelate cascade', function(assert)
+{
+  var prefix = 'unrelate_cascade_';
+
+  var Task = Rekord({
+    name: prefix + 'task',
+    fields: ['name', 'done', 'list_id']
+  });
+
+  var TaskList = Rekord({
+    name: prefix + 'list',
+    fields: ['name'],
+    hasMany: {
+      tasks: {
+        model: Task,
+        foreign: 'list_id',
+        comparator: 'id',
+        cascadeRemove: Rekord.Cascade.All
+      }
+    }
+  });
+
+  var l0 = TaskList.boot({id: 1, name: 'l0'});
+  var t0 = Task.boot({id: 2, list_id: 1, name: 't0', done: false});
+  var t1 = Task.boot({id: 3, list_id: 1, name: 't1', done: true});
+
+  var sess = new Session();
+
+  sess.watch( l0, { tasks: true } );
+
+  ok( sess.isWatching( l0 ) );
+  ok( sess.isWatching( t0 ) );
+  ok( sess.isWatching( t1 ) );
+
+  l0.tasks.unrelate( t0 );
+
+  ok( sess.isRemoved( t0 ) );
+  ok( sess.hasChanges() );
+
+  strictEqual( t0.list_id, null );
+  deepEqual( l0.tasks.toArray(), [t1], 'tasks updated' );
+
+  sess.discard();
+
+  notOk( sess.hasChanges(), 'no changes as expected' );
+  strictEqual( t0.list_id, l0.id, 'fk restored' );
+  deepEqual( l0.tasks.toArray(), [t0, t1], 'tasks restored' );
+
+  l0.tasks.unrelate( t0 );
+
+  strictEqual( t0.list_id, null );
+  deepEqual( l0.tasks.toArray(), [t1], 'tasks updated' );
+
+  sess.save();
+
+  assertRemoved( t0 );
+  strictEqual( t0.list_id, null );
+  deepEqual( l0.tasks.toArray(), [t1], 'tasks updated' );
+});
+
+test( 'relate', function(assert)
+{
+  var prefix = 'relate_';
+
+  var Task = Rekord({
+    name: prefix + 'task',
+    fields: ['name', 'done', 'list_id']
+  });
+
+  var TaskList = Rekord({
+    name: prefix + 'list',
+    fields: ['name'],
+    hasMany: {
+      tasks: {
+        model: Task,
+        foreign: 'list_id',
+        comparator: 'id'
+      }
+    }
+  });
+
+  var l0 = TaskList.boot({id: 1, name: 'l0'});
+  var l1 = TaskList.boot({id: 2, name: 'l1'});
+  var t0 = Task.boot({id: 3, list_id: 1, name: 't0', done: false});
+  var t1 = Task.boot({id: 4, list_id: 1, name: 't1', done: true});
+  var t2 = Task.boot({id: 5, list_id: 2, name: 't2', done: true});
+  var t3 = new Task({id: 6, name: 't3', done: true});
+
+  var sess = new Session();
+
+  sess.watch( l0, { tasks: true } );
+  sess.watch( l1, { tasks: true } );
+
+  ok( sess.isWatching( l0 ) );
+  ok( sess.isWatching( l1 ) );
+  ok( sess.isWatching( t0 ) );
+  ok( sess.isWatching( t1 ) );
+  ok( sess.isWatching( t2 ) );
+  notOk( sess.isWatching( t3 ) );
+
+  assertNew( t3 );
+
+  l0.tasks.relate( t3 );
+
+  strictEqual( t3.list_id, l0.id );
+  strictEqual( l0.tasks.length, 3 );
+  strictEqual( l1.tasks.length, 1 );
+
+  l0.tasks.relate( t2 );
+
+  strictEqual( t2.list_id, l0.id );
+  strictEqual( l0.tasks.length, 4 );
+  strictEqual( l1.tasks.length, 0 );
+});
+
+test( 'unrelate all no cascade', function(assert)
+{
+  var prefix = 'unrelate_all_no_cascade_';
+
+  var Task = Rekord({
+    name: prefix + 'task',
+    fields: ['name', 'done', 'list_id']
+  });
+
+  var TaskList = Rekord({
+    name: prefix + 'list',
+    fields: ['name'],
+    hasMany: {
+      tasks: {
+        model: Task,
+        foreign: 'list_id',
+        comparator: 'id',
+        cascadeRemove: Rekord.Cascade.None
+      }
+    }
+  });
+
+  var l0 = TaskList.boot({id: 1, name: 'l0'});
+  var t0 = Task.boot({id: 2, list_id: 1, name: 't0', done: false});
+  var t1 = Task.boot({id: 3, list_id: 1, name: 't1', done: true});
+
+  var sess = new Session();
+
+  sess.watch( l0, { tasks: true } );
+
+  ok( sess.isWatching( l0 ) );
+  ok( sess.isWatching( t0 ) );
+  ok( sess.isWatching( t1 ) );
+
+  l0.tasks.unrelate();
+
+  ok( sess.isUnwatched( t0 ) );
+  ok( sess.isUnwatched( t1 ) );
+  ok( sess.hasChanges() );
+
+  strictEqual( t0.list_id, null );
+  strictEqual( t1.list_id, null );
+  deepEqual( l0.tasks.toArray(), [], 'tasks updated' );
+
+  sess.discard();
+
+  notOk( sess.hasChanges(), 'no changes as expected' );
+  strictEqual( t0.list_id, l0.id, 'fk restored' );
+  strictEqual( t1.list_id, l0.id, 'fk restored' );
+  deepEqual( l0.tasks.toArray(), [t0, t1], 'tasks restored' );
+
+  l0.tasks.unrelate();
+
+  strictEqual( t0.list_id, null );
+  strictEqual( t1.list_id, null );
+  deepEqual( l0.tasks.toArray(), [], 'tasks updated' );
+
+  sess.save();
+
+  strictEqual( t0.list_id, null );
+  strictEqual( t1.list_id, null );
+  deepEqual( l0.tasks.toArray(), [], 'tasks updated' );
+});
+
+test( 'unrelate all cascade', function(assert)
+{
+  var prefix = 'unrelate_all_cascade_';
+
+  var Task = Rekord({
+    name: prefix + 'task',
+    fields: ['name', 'done', 'list_id']
+  });
+
+  var TaskList = Rekord({
+    name: prefix + 'list',
+    fields: ['name'],
+    hasMany: {
+      tasks: {
+        model: Task,
+        foreign: 'list_id',
+        comparator: 'id',
+        cascadeRemove: Rekord.Cascade.All
+      }
+    }
+  });
+
+  var l0 = TaskList.boot({id: 1, name: 'l0'});
+  var t0 = Task.boot({id: 2, list_id: 1, name: 't0', done: false});
+  var t1 = Task.boot({id: 3, list_id: 1, name: 't1', done: true});
+
+  var sess = new Session();
+
+  sess.watch( l0, { tasks: true } );
+
+  ok( sess.isWatching( l0 ) );
+  ok( sess.isWatching( t0 ) );
+  ok( sess.isWatching( t1 ) );
+
+  l0.tasks.unrelate();
+
+  ok( sess.isRemoved( t0 ) );
+  ok( sess.isRemoved( t1 ) );
+  ok( sess.hasChanges() );
+
+  strictEqual( t0.list_id, null );
+  strictEqual( t1.list_id, null );
+  deepEqual( l0.tasks.toArray(), [], 'tasks updated' );
+
+  sess.discard();
+
+  notOk( sess.hasChanges(), 'no changes as expected' );
+  strictEqual( t0.list_id, l0.id, 'fk restored' );
+  strictEqual( t1.list_id, l0.id, 'fk restored' );
+  deepEqual( l0.tasks.toArray(), [t0, t1], 'tasks restored' );
+
+  l0.tasks.unrelate();
+
+  strictEqual( t0.list_id, null );
+  strictEqual( t1.list_id, null );
+  deepEqual( l0.tasks.toArray(), [], 'tasks updated' );
+
+  sess.save();
+
+  assertRemoved( t0 );
+  strictEqual( t0.list_id, null );
+  strictEqual( t1.list_id, null );
+  deepEqual( l0.tasks.toArray(), [], 'tasks updated' );
+});
+
+test( 'promise success', function(assert)
+{
+  var prefix = 'promise_success_';
+
+  var Task = Rekord({
+    name: prefix + 'task',
+    fields: ['name', 'done', 'list_id']
+  });
+
+  var TaskList = Rekord({
+    name: prefix + 'list',
+    fields: ['name'],
+    hasMany: {
+      tasks: {
+        model: Task,
+        foreign: 'list_id',
+        comparator: 'id',
+        cascadeRemove: Rekord.Cascade.All
+      }
+    }
+  });
+
+  var l0 = TaskList.boot({id: 1, name: 'l0'});
+  var t0 = Task.boot({id: 2, list_id: 1, name: 't0', done: false});
+  var t1 = Task.boot({id: 3, list_id: 1, name: 't1', done: true});
+
+  var sess = new Session();
+
+  sess.watch( l0, { tasks: true } );
+
+  t0.done = true;
+  t0.$save();
+
+  expect( 2 );
+
+  ok( sess.hasChanges() );
+
+  var promise = sess.save();
+
+  promise.success(function()
+  {
+    notOk( t0.$hasChanges() );
+  });
+
+  promise.failure(function()
+  {
+    ok();
+  });
+});
+
+test( 'promise failure', function(assert)
+{
+  var prefix = 'promise_failure_';
+
+  var Task = Rekord({
+    name: prefix + 'task',
+    fields: ['name', 'done', 'list_id']
+  });
+
+  var TaskList = Rekord({
+    name: prefix + 'list',
+    fields: ['name'],
+    hasMany: {
+      tasks: {
+        model: Task,
+        foreign: 'list_id',
+        comparator: 'id',
+        cascadeRemove: Rekord.Cascade.All
+      }
+    }
+  });
+
+  var l0 = TaskList.boot({id: 1, name: 'l0'});
+  var t0 = Task.boot({id: 2, list_id: 1, name: 't0', done: false});
+  var t1 = Task.boot({id: 3, list_id: 1, name: 't1', done: true});
+
+  var sess = new Session();
+
+  sess.watch( l0, { tasks: true } );
+
+  t0.done = true;
+  t0.$save();
+
+  expect( 2 );
+
+  ok( sess.hasChanges() );
+
+  Task.Database.rest.status = 500;
+
+  var promise = sess.save();
+
+  promise.success(function()
+  {
+    ok();
+  });
+
+  promise.failure(function()
+  {
+    ok( t0.$hasChanges() );
+  });
+});
+
 // one of the rest calls fails during save (promise must fail with error, calling save again should finish everything)
-// moving an object from one relation to another (must watch two objects)
-// model.remove -> discard -> model.remove -> save
-// model.remove -> discard -> model.save -> discard -> model.remove -> save
