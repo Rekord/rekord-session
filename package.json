@@ -1,6 +1,6 @@
 {
   "name": "rekord-session",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Adds mass changes & discards to Rekord",
   "author": "Philip Diffenderfer",
   "license": "MIT",
