@@ -82,6 +82,12 @@ addMethods( SessionWatch.prototype,
     }
   },
 
+  resetSave: function()
+  {
+    this.save = false;
+    this.cascade = undefined;
+  },
+
   saveState: function(override)
   {
     if ( this.state && !override )

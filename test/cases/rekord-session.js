@@ -1615,7 +1615,7 @@ test( 'promise failure', function(assert)
   t0.done = true;
   t0.$save();
 
-  expect( 2 );
+  expect( 3 );
 
   ok( sess.hasChanges() );
 
@@ -1632,6 +1632,33 @@ test( 'promise failure', function(assert)
   {
     ok( t0.$hasChanges() );
   });
+
+  ok( sess.hasChanges(), 'still have changes of course' );
 });
 
-// one of the rest calls fails during save (promise must fail with error, calling save again should finish everything)
+test( 'remove new', function(assert)
+{
+  var prefix = 'remove_new_';
+
+  var Task = Rekord({
+    name: prefix + 'task',
+    fields: ['name', 'done']
+  });
+
+  var t0 = new Task({name: 't0', done: false});
+  var t1 = Task.create({name: 't1', done: true});
+
+  var sess = new Session();
+
+  sess.watchMany( [t0, t1] );
+
+  ok( sess.hasChanges(), 'changes exist due to new model' );
+
+  sess.unwatch( t0 );
+
+  notOk( sess.hasChanges(), 'new model removed, no changes' );
+
+  t1.name = 't1a';
+
+  ok( sess.hasChanges(), 'changes were made' );
+});
