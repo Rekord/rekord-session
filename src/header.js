@@ -18,5 +18,7 @@
 
   var addMethods = Rekord.addMethods;
   var replaceMethod = Rekord.replaceMethod;
+  var addEventful = Rekord.addEventful;
+  var addEventFunction = Rekord.addEventFunction;
 
   var keyParser = Rekord.createParser('$key()');

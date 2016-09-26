@@ -19,6 +19,8 @@
 
   var addMethods = Rekord.addMethods;
   var replaceMethod = Rekord.replaceMethod;
+  var addEventful = Rekord.addEventful;
+  var addEventFunction = Rekord.addEventFunction;
 
   var keyParser = Rekord.createParser('$key()');
 
@@ -199,6 +201,7 @@ function Session()
   this.removing = new Map();
   this.unwatched = new Map();
   this.validationRequired = false;
+  this.promise = Promise.resolve( this );
 }
 
 Session.Status =
@@ -210,6 +213,29 @@ Session.Status =
   Disabled: 'disabled',
 
   Destroyed: 'destroyed'
+};
+
+Session.Events =
+{
+  Discard: 'discard', // (Session)
+
+  SaveStart: 'save-start', // (Session)
+
+  SaveSuccess: 'save-sucess', // (Session)
+
+  SaveFailure: 'save-failure', // (Session)
+
+  Destroy: 'destroy', // (Session)
+
+  Watch: 'watch', // (Session, Model, SessionWatch)
+
+  Unwatch: 'unwatch',  // (Session, Collection, SessionWatch)
+
+  Invalid: 'invalid',  // (Session)
+
+  Valid: 'valid',  // (Session)
+
+  Changes: 'discard save-start save-success save-failure destroy'  // (Session)
 };
 
 addMethods( Session.prototype,
@@ -289,6 +315,15 @@ addMethods( Session.prototype,
           }
         }
       });
+
+      if ( valid )
+      {
+        this.trigger( Session.Events.Valid, [this] );
+      }
+      else
+      {
+        this.trigger( Session.Events.Invalid, [this] );
+      }
     }
 
     return valid;
@@ -311,6 +346,13 @@ addMethods( Session.prototype,
       return Promise.reject( this );
     }
 
+    if ( this.promise.isPending() )
+    {
+      return Promise.reject( this );
+    }
+
+    this.trigger( Session.Events.SaveStart, [this] );
+
     var sessionPromise = new Promise();
 
     var savePromise = Promise.singularity( sessionPromise, this, this.handleSave );
@@ -318,6 +360,9 @@ addMethods( Session.prototype,
     sessionPromise.resolve( this );
 
     savePromise.success( this.onSaveSuccess, this );
+    savePromise.complete( this.onSaveComplete, this );
+
+    this.promise = savePromise;
 
     return savePromise;
   },
@@ -396,6 +441,18 @@ addMethods( Session.prototype,
     {
       watcher.destroy();
     };
+  },
+
+  onSaveComplete: function()
+  {
+    if ( this.promise.isSuccess() )
+    {
+      this.trigger( Session.Events.SaveSuccess, [this] );
+    }
+    else
+    {
+      this.trigger( Session.Events.SaveFailure, [this] );
+    }
   },
 
   onSaveSuccess: function()
@@ -537,6 +594,7 @@ addMethods( Session.prototype,
       this.removing.reset();
 
       this.status = Session.Status.Destroyed;
+      this.trigger( Session.Events.Destroy, [this] );
     }
   },
 
@@ -686,6 +744,8 @@ addMethods( Session.prototype,
       }
     }
 
+    this.trigger( Session.Events.Watch, [this, model, watcher] );
+
     return watcher;
   },
 
@@ -711,6 +771,8 @@ addMethods( Session.prototype,
     watcher.addListener( Collection.Events.Removes, Listeners.CollectionRemoves( this, watcher ) );
     watcher.addListener( Collection.Events.Cleared, Listeners.CollectionCleared( this, watcher ) );
 
+    this.trigger( Session.Events.Watch, [this, collection, watcher] );
+
     return watcher;
   },
 
@@ -731,6 +793,8 @@ addMethods( Session.prototype,
           watcher.resetSave();
           watcher.moveTo( this.unwatched );
         }
+
+        this.trigger( Session.Events.Unwatch, [this, object, watcher] );
       }
     }
   },
@@ -816,6 +880,10 @@ addMethods( Session.prototype,
   }
 
 });
+
+addEventful( Session.prototype );
+
+addEventFunction( Session.prototype, 'change', Session.Events.Changes );
 
 
 function SessionWatch( key, object )
@@ -1117,5 +1185,6 @@ function searchModels(map, defaultResult, callback, context)
 
   Rekord.Session = Session;
   Rekord.SessionWatch = SessionWatch;
+  Rekord.SessionListeners = Listeners;
 
 })(this, this.Rekord);
