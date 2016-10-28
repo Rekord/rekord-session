@@ -1,9 +1,10 @@
 {
   "name": "rekord-session",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "description": "Adds mass changes & discards to Rekord",
   "author": "Philip Diffenderfer",
   "license": "MIT",
+  "main": "build/rekord-session.js",
   "repository": {
     "type": "git",
     "url": "git://github.com/Rekord/rekord-session.git"

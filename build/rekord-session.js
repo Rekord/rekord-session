@@ -1,4 +1,4 @@
-/* rekord-session 1.4.2 - Adds mass changes & discards to Rekord by Philip Diffenderfer */
+/* rekord-session 1.4.3 - Adds mass changes & discards to Rekord by Philip Diffenderfer */
 (function(global, Rekord, undefined)
 {
   var Map = Rekord.Map;
