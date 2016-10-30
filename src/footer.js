@@ -3,4 +3,6 @@
   Rekord.SessionWatch = SessionWatch;
   Rekord.SessionListeners = Listeners;
 
-})(this, this.Rekord);
+  return Rekord;
+
+}));
