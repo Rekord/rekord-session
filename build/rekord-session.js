@@ -1,4 +1,4 @@
-/* rekord-session 1.5.1 - Adds mass changes & discards to Rekord by Philip Diffenderfer */
+/* rekord-session 1.5.2 - Adds mass changes & discards to Rekord by Philip Diffenderfer */
 // UMD (Universal Module Definition)
 (function (root, factory)
 {

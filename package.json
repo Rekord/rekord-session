@@ -1,6 +1,6 @@
 {
   "name": "rekord-session",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "Adds mass changes & discards to Rekord",
   "author": "Philip Diffenderfer",
   "license": "MIT",
@@ -32,6 +32,6 @@
     "merge-stream": "^1.0.0"
   },
   "dependencies": {
-    "rekord": "~1.5.1"
+    "rekord": "~1.5.0"
   }
 }
