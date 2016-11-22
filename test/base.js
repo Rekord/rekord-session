@@ -477,7 +477,7 @@ function TestRest()
   this.status = 200;
   this.returnValue = false;
   this.delay = 0;
-  this.lastModel = this.lastRecord = this.lastOperation = null;
+  this.lastModel = this.lastRecord = this.lastOperation = this.lastOptions = null;
 }
 
 TestRest.prototype =
@@ -514,10 +514,11 @@ TestRest.prototype =
       if ( failure ) failure( returnedValue, status );
     }
   },
-  get: function(model, success, failure)
+  get: function(model, options, success, failure)
   {
     this.lastOperation = 'get';
     this.lastModel = model;
+    this.lastOptions = options;
 
     var map = this.map;
     function onGet()
@@ -532,11 +533,12 @@ TestRest.prototype =
 
     this.finishDelayed( onGet, failure, null );
   },
-  create: function(model, encoded, success, failure)
+  create: function(model, encoded, options, success, failure)
   {
     this.lastOperation = 'create';
     this.lastModel = model;
     this.lastRecord = encoded;
+    this.lastOptions = options;
 
     var map = this.map;
     function onCreate()
@@ -547,11 +549,12 @@ TestRest.prototype =
 
     this.finishDelayed( onCreate, failure, {} );
   },
-  update: function(model, encoded, success, failure)
+  update: function(model, encoded, options, success, failure)
   {
     this.lastOperation = 'update';
     this.lastModel = model;
     this.lastRecord = encoded;
+    this.lastOptions = options;
 
     var map = this.map;
     function onUpdate()
@@ -565,10 +568,11 @@ TestRest.prototype =
 
     this.finishDelayed( onUpdate, failure, {} );
   },
-  remove: function(model, success, failure)
+  remove: function(model, options, success, failure)
   {
     this.lastOperation = 'remove';
     this.lastModel = model;
+    this.lastOptions = options;
 
     var map = this.map;
     function onRemove()
@@ -579,15 +583,19 @@ TestRest.prototype =
 
     this.finishDelayed( onRemove, failure, {} );
   },
-  all: function(success, failure)
+  all: function(options, success, failure)
   {
     this.lastOperation = 'all';
+    this.lastOptions = options;
+
     this.finishDelayed( success, failure, this.map.values );
   },
-  query: function(url, data, success, failure)
+  query: function(url, data, options, success, failure)
   {
     this.lastOperation = 'query';
     this.lastRecord = data;
+    this.lastOptions = options;
+
     this.finishDelayed( success, failure, this.queries.get( url ) );
   }
 };

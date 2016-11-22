@@ -28,6 +28,7 @@
   var Promise = Rekord.Promise;
   var Database = Rekord.Database;
   var Collection = Rekord.Collection;
+  var Class = Rekord.Class;
   var ModelCollection = Rekord.ModelCollection;
   var RelationHasOne = Rekord.Relations.hasOne;
   var RelationBelongsTo = Rekord.Relations.belongsTo;
@@ -39,8 +40,6 @@
   var equals = Rekord.equals;
   var noop = Rekord.noop;
 
-  var addMethods = Rekord.addMethods;
-  var replaceMethod = Rekord.replaceMethod;
   var addEventful = Rekord.addEventful;
   var addEventFunction = Rekord.addEventFunction;
 

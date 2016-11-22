@@ -1,7 +1,7 @@
 
-replaceMethod( Model.prototype, '$save', function($save)
+Class.replace( Model, '$save', function($save)
 {
-  return function(setProperties, setValue, cascade)
+  return function(setProperties, setValue, cascade, options)
   {
     var fakeIt = this.$session && this.$session.isActive();
 
@@ -14,14 +14,31 @@ replaceMethod( Model.prototype, '$save', function($save)
 
     if ( fakeIt )
     {
-      var cascade =
-        (arguments.length === 3 ? cascade :
-          (arguments.length === 2 && isObject( setProperties ) && isNumber( setValue ) ? setValue :
-            (arguments.length === 1 && isNumber( setProperties ) ?  setProperties : this.$db.cascade ) ) );
+      if ( isObject( setProperties ) )
+      {
+        options = cascade;
+        cascade = setValue;
+        setValue = undefined;
+      }
+      else if ( isNumber( setProperties ) )
+      {
+        options = setValue;
+        cascade = setProperties;
+        setValue = undefined;
+        setProperties = undefined;
+      }
 
-      this.$set( setProperties, setValue );
+      if ( !isNumber( cascade ) )
+      {
+        cascade = this.$db.cascade;
+      }
 
-      this.$session.saveModel( this, cascade );
+      if ( setProperties !== undefined )
+      {
+        this.$set( setProperties, setValue );
+      }
+
+      this.$session.saveModel( this, cascade, options );
 
       return Promise.resolve( this );
     }
@@ -30,9 +47,9 @@ replaceMethod( Model.prototype, '$save', function($save)
   };
 });
 
-replaceMethod( Model.prototype, '$remove', function($remove)
+Class.replace( Model, '$remove', function($remove)
 {
-  return function(cascade)
+  return function(cascade, options)
   {
     var ignoreExists = this.$session && this.$session.isSaving();
     var fakeIt = this.$session && this.$session.isActive();
@@ -44,7 +61,7 @@ replaceMethod( Model.prototype, '$remove', function($remove)
 
     if ( fakeIt )
     {
-      this.$session.removeModel( this, cascade );
+      this.$session.removeModel( this, cascade, options );
 
       return Promise.resolve( this );
     }

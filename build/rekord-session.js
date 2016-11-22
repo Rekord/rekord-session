@@ -1,4 +1,4 @@
-/* rekord-session 1.5.0 - Adds mass changes & discards to Rekord by Philip Diffenderfer */
+/* rekord-session 1.5.1 - Adds mass changes & discards to Rekord by Philip Diffenderfer */
 // UMD (Universal Module Definition)
 (function (root, factory)
 {
@@ -29,6 +29,7 @@
   var Promise = Rekord.Promise;
   var Database = Rekord.Database;
   var Collection = Rekord.Collection;
+  var Class = Rekord.Class;
   var ModelCollection = Rekord.ModelCollection;
   var RelationHasOne = Rekord.Relations.hasOne;
   var RelationBelongsTo = Rekord.Relations.belongsTo;
@@ -40,8 +41,6 @@
   var equals = Rekord.equals;
   var noop = Rekord.noop;
 
-  var addMethods = Rekord.addMethods;
-  var replaceMethod = Rekord.replaceMethod;
   var addEventful = Rekord.addEventful;
   var addEventFunction = Rekord.addEventFunction;
 
@@ -162,9 +161,9 @@ var Listeners = {
 };
 
 
-replaceMethod( Model.prototype, '$save', function($save)
+Class.replace( Model, '$save', function($save)
 {
-  return function(setProperties, setValue, cascade)
+  return function(setProperties, setValue, cascade, options)
   {
     var fakeIt = this.$session && this.$session.isActive();
 
@@ -177,14 +176,31 @@ replaceMethod( Model.prototype, '$save', function($save)
 
     if ( fakeIt )
     {
-      var cascade =
-        (arguments.length === 3 ? cascade :
-          (arguments.length === 2 && isObject( setProperties ) && isNumber( setValue ) ? setValue :
-            (arguments.length === 1 && isNumber( setProperties ) ?  setProperties : this.$db.cascade ) ) );
+      if ( isObject( setProperties ) )
+      {
+        options = cascade;
+        cascade = setValue;
+        setValue = undefined;
+      }
+      else if ( isNumber( setProperties ) )
+      {
+        options = setValue;
+        cascade = setProperties;
+        setValue = undefined;
+        setProperties = undefined;
+      }
 
-      this.$set( setProperties, setValue );
+      if ( !isNumber( cascade ) )
+      {
+        cascade = this.$db.cascade;
+      }
 
-      this.$session.saveModel( this, cascade );
+      if ( setProperties !== undefined )
+      {
+        this.$set( setProperties, setValue );
+      }
+
+      this.$session.saveModel( this, cascade, options );
 
       return Promise.resolve( this );
     }
@@ -193,9 +209,9 @@ replaceMethod( Model.prototype, '$save', function($save)
   };
 });
 
-replaceMethod( Model.prototype, '$remove', function($remove)
+Class.replace( Model, '$remove', function($remove)
 {
-  return function(cascade)
+  return function(cascade, options)
   {
     var ignoreExists = this.$session && this.$session.isSaving();
     var fakeIt = this.$session && this.$session.isActive();
@@ -207,7 +223,7 @@ replaceMethod( Model.prototype, '$remove', function($remove)
 
     if ( fakeIt )
     {
-      this.$session.removeModel( this, cascade );
+      this.$session.removeModel( this, cascade, options );
 
       return Promise.resolve( this );
     }
@@ -261,7 +277,7 @@ Session.Events =
   Changes: 'discard save-start save-success save-failure destroy'  // (Session)
 };
 
-addMethods( Session.prototype,
+Class.create( Session,
 {
 
   hasChanges: function(checkSavedOnly)
@@ -413,7 +429,7 @@ addMethods( Session.prototype,
         model.$db.models.remove( model.$key() );
       }
 
-      model.$save( watcher.cascade ).success( this.afterSave( watcher ) );
+      model.$save( watcher.cascade, watcher.options ).success( this.afterSave( watcher ) );
     }
   },
 
@@ -423,7 +439,7 @@ addMethods( Session.prototype,
     {
       this.resync( model );
 
-      model.$remove( watcher.cascade ).success( this.afterRemove( watcher, this ) );
+      model.$remove( watcher.cascade, watcher.options ).success( this.afterRemove( watcher, this ) );
     }
   },
 
@@ -436,7 +452,7 @@ addMethods( Session.prototype,
         model.$db.models.remove( model.$key() );
       }
 
-      model.$save( watcher.cascade ).success( this.afterUnwatchSave( watcher ) );
+      model.$save( watcher.cascade, watcher.options ).success( this.afterUnwatchSave( watcher ) );
     }
   },
 
@@ -822,7 +838,7 @@ addMethods( Session.prototype,
     }
   },
 
-  saveModel: function(model, cascade)
+  saveModel: function(model, cascade, options)
   {
     // Search in either watching or unwatched. An unwatched model is one that
     // could have recently been reunlated from another model and might need
@@ -832,6 +848,7 @@ addMethods( Session.prototype,
     if ( watcher )
     {
       watcher.addCascade( cascade );
+      watcher.options = options;
 
       if ( !watcher.save )
       {
@@ -858,7 +875,7 @@ addMethods( Session.prototype,
     }
   },
 
-  removeModel: function(model, cascade)
+  removeModel: function(model, cascade, options)
   {
     // Search in either watching or unwatched. An unwatched model is one that
     // could have recently been unrelated from another model.
@@ -874,6 +891,7 @@ addMethods( Session.prototype,
       {
         watcher.resetSave();
         watcher.addCascade( cascade );
+        watcher.options = options;
         watcher.moveTo( this.removing );
 
         model.$status = Model.Status.RemovePending;
@@ -887,6 +905,7 @@ addMethods( Session.prototype,
       if ( removed )
       {
         removed.addCascade( cascade );
+        removed.options = options;
       }
     }
   },
@@ -904,9 +923,9 @@ addMethods( Session.prototype,
 
 });
 
-addEventful( Session.prototype );
+addEventful( Session );
 
-addEventFunction( Session.prototype, 'change', Session.Events.Changes );
+addEventFunction( Session, 'change', Session.Events.Changes );
 
 
 function SessionWatch( key, object )
@@ -920,10 +939,11 @@ function SessionWatch( key, object )
   this.offs = [];
   this.save = false;
   this.cascade = undefined;
+  this.options = undefined;
   this.state = null;
 }
 
-addMethods( SessionWatch.prototype,
+Class.create( SessionWatch,
 {
 
   setRelations: function(relations)
@@ -996,6 +1016,7 @@ addMethods( SessionWatch.prototype,
   {
     this.save = false;
     this.cascade = undefined;
+    this.options = undefined;
   },
 
   saveState: function(override)
@@ -1150,6 +1171,7 @@ addMethods( SessionWatch.prototype,
     this.parent = null;
     this.save = false;
     this.cascade = undefined;
+    this.options = undefined;
   },
 
   moveChildren: function(target)

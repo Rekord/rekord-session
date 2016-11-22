@@ -10,10 +10,11 @@ function SessionWatch( key, object )
   this.offs = [];
   this.save = false;
   this.cascade = undefined;
+  this.options = undefined;
   this.state = null;
 }
 
-addMethods( SessionWatch.prototype,
+Class.create( SessionWatch,
 {
 
   setRelations: function(relations)
@@ -86,6 +87,7 @@ addMethods( SessionWatch.prototype,
   {
     this.save = false;
     this.cascade = undefined;
+    this.options = undefined;
   },
 
   saveState: function(override)
@@ -240,6 +242,7 @@ addMethods( SessionWatch.prototype,
     this.parent = null;
     this.save = false;
     this.cascade = undefined;
+    this.options = undefined;
   },
 
   moveChildren: function(target)

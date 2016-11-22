@@ -43,7 +43,7 @@ Session.Events =
   Changes: 'discard save-start save-success save-failure destroy'  // (Session)
 };
 
-addMethods( Session.prototype,
+Class.create( Session,
 {
 
   hasChanges: function(checkSavedOnly)
@@ -195,7 +195,7 @@ addMethods( Session.prototype,
         model.$db.models.remove( model.$key() );
       }
 
-      model.$save( watcher.cascade ).success( this.afterSave( watcher ) );
+      model.$save( watcher.cascade, watcher.options ).success( this.afterSave( watcher ) );
     }
   },
 
@@ -205,7 +205,7 @@ addMethods( Session.prototype,
     {
       this.resync( model );
 
-      model.$remove( watcher.cascade ).success( this.afterRemove( watcher, this ) );
+      model.$remove( watcher.cascade, watcher.options ).success( this.afterRemove( watcher, this ) );
     }
   },
 
@@ -218,7 +218,7 @@ addMethods( Session.prototype,
         model.$db.models.remove( model.$key() );
       }
 
-      model.$save( watcher.cascade ).success( this.afterUnwatchSave( watcher ) );
+      model.$save( watcher.cascade, watcher.options ).success( this.afterUnwatchSave( watcher ) );
     }
   },
 
@@ -604,7 +604,7 @@ addMethods( Session.prototype,
     }
   },
 
-  saveModel: function(model, cascade)
+  saveModel: function(model, cascade, options)
   {
     // Search in either watching or unwatched. An unwatched model is one that
     // could have recently been reunlated from another model and might need
@@ -614,6 +614,7 @@ addMethods( Session.prototype,
     if ( watcher )
     {
       watcher.addCascade( cascade );
+      watcher.options = options;
 
       if ( !watcher.save )
       {
@@ -640,7 +641,7 @@ addMethods( Session.prototype,
     }
   },
 
-  removeModel: function(model, cascade)
+  removeModel: function(model, cascade, options)
   {
     // Search in either watching or unwatched. An unwatched model is one that
     // could have recently been unrelated from another model.
@@ -656,6 +657,7 @@ addMethods( Session.prototype,
       {
         watcher.resetSave();
         watcher.addCascade( cascade );
+        watcher.options = options;
         watcher.moveTo( this.removing );
 
         model.$status = Model.Status.RemovePending;
@@ -669,6 +671,7 @@ addMethods( Session.prototype,
       if ( removed )
       {
         removed.addCascade( cascade );
+        removed.options = options;
       }
     }
   },
@@ -686,6 +689,6 @@ addMethods( Session.prototype,
 
 });
 
-addEventful( Session.prototype );
+addEventful( Session );
 
-addEventFunction( Session.prototype, 'change', Session.Events.Changes );
+addEventFunction( Session, 'change', Session.Events.Changes );
